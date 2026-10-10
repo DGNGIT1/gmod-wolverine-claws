@@ -4,15 +4,16 @@ if CLIENT then
     SWEP.SlotPos = 1
     SWEP.DrawAmmo = false
     SWEP.DrawCrosshair = true
-    SWEP.ViewModelFOV = 60
+    SWEP.ViewModelFOV = 70
+    SWEP.RenderGroup = RENDERGROUP_OPAQUE
 end
 
 SWEP.Base = "weapon_base"
 SWEP.Category = "Fortnite - Chapter 2 S4"
 SWEP.Author = "DGNGIT1"
 SWEP.Contact = ""
-SWEP.Purpose = "Wolverine Claws from Fortnite Chapter 2 Season 4"
-SWEP.Instructions = "LMB: 6-hit combo | RMB: Spin Slash | Jump + LMB: Air Dash | Shift: Flip Dodge"
+SWEP.Purpose = "Fortnite Chapter 2 Season 4 Wolverine Claws"
+SWEP.Instructions = "LMB: 6-hit combo | RMB: Spin Slash | Jump + LMB: Air Dash | Shift: Dodge Roll"
 SWEP.Spawnable = true
 SWEP.AdminOnly = false
 
@@ -21,21 +22,24 @@ SWEP.WorldModel = "models/weapons/w_models/w_fortnite_wolverine_claws.mdl"
 SWEP.HoldType = "fist"
 SWEP.UseHands = true
 
+-- Basic melee combo values
 SWEP.Primary.Damage = 35
 SWEP.Primary.ClipSize = -1
 SWEP.Primary.DefaultClip = -1
 SWEP.Primary.Ammo = "none"
 SWEP.Primary.Automatic = true
-SWEP.Primary.Delay = 0.12
+SWEP.Primary.Delay = 0.14
 SWEP.Primary.StructureDamage = 50
 
+-- Spin slash values
 SWEP.Secondary.Damage = 60
 SWEP.Secondary.ClipSize = -1
 SWEP.Secondary.DefaultClip = -1
 SWEP.Secondary.Ammo = "none"
 SWEP.Secondary.Automatic = false
-SWEP.Secondary.Delay = 0.5
+SWEP.Secondary.Delay = 0.55
 
+-- Special abilities
 SWEP.AirDashDamage = 25
 SWEP.AirDashStructureDamage = 40
 SWEP.SpinSlashCooldown = 5
@@ -43,10 +47,10 @@ SWEP.AirDashCooldown = 5
 SWEP.DodgeRollCooldown = 5
 SWEP.PassiveHealPerSecond = 6
 SWEP.SpeedBoostMultiplier = 1.25
+SWEP.ThirdPersonFOV = 70
 
 function SWEP:Initialize()
     self:SetHoldType(self.HoldType)
-
     self.ComboStep = 0
     self.ComboResetTime = 0
     self.LastSpinSlash = 0
@@ -62,9 +66,14 @@ function SWEP:Deploy()
         if IsValid(owner) then
             self.OriginalWalkSpeed = owner:GetWalkSpeed()
             self.OriginalRunSpeed = owner:GetRunSpeed()
+            self.OriginalViewOffset = owner:GetViewOffset()
             owner:SetWalkSpeed(self.OriginalWalkSpeed * self.SpeedBoostMultiplier)
             owner:SetRunSpeed(self.OriginalRunSpeed * self.SpeedBoostMultiplier)
         end
+    end
+
+    if CLIENT then
+        self.OwnerViewMode = "thirdperson"
     end
 
     self:SetHoldType(self.HoldType)
@@ -80,6 +89,9 @@ function SWEP:Holster()
             end
             if self.OriginalRunSpeed then
                 owner:SetRunSpeed(self.OriginalRunSpeed)
+            end
+            if self.OriginalViewOffset then
+                owner:SetViewOffset(self.OriginalViewOffset)
             end
         end
     end
@@ -106,6 +118,17 @@ function SWEP:Think()
         end
     end
 
+    if CLIENT then
+        if IsValid(owner) then
+            if owner == LocalPlayer() and self:GetOwner() == LocalPlayer() then
+                local view = self:GetOwner():GetViewEntity()
+                if IsValid(view) and view == self:GetOwner() then
+                    self:GetOwner():SetFOV(self.ThirdPersonFOV, 0.1)
+                end
+            end
+        end
+    end
+
     self:SetNextThink(curTime + 0.01)
 end
 
@@ -115,6 +138,7 @@ function SWEP:PrimaryAttack()
 
     local curTime = CurTime()
 
+    -- Air dash only when airborne and attack is used while in midair
     if not owner:IsOnGround() and curTime - self.LastAirDash >= self.AirDashCooldown then
         self:PerformAirDash()
         self.LastAirDash = curTime
@@ -130,17 +154,16 @@ function SWEP:PrimaryAttack()
         self.ComboStep = 1
     end
 
-    local delay = 0.12
+    -- Fortnite-like rhythm: 6 hit chain with a longer finish on the 6th swing
+    local delay = 0.14
     if self.ComboStep == 5 then
         delay = 0.18
     elseif self.ComboStep == 6 then
-        delay = 0.28
+        delay = 0.22
     end
 
-    self.SetNextPrimaryFire = self.SetNextPrimaryFire or function() end
     self:SetNextPrimaryFire(curTime + delay)
     self:SetNextSecondaryFire(curTime + delay)
-
     self.ComboResetTime = curTime + 0.9
 
     owner:SetAnimation(PLAYER_ATTACK1)
@@ -190,7 +213,7 @@ function SWEP:SecondaryAttack()
     local curTime = CurTime()
     if curTime - self.LastSpinSlash < self.SpinSlashCooldown then return end
 
-    self:SetNextSecondaryFire(curTime + 0.5)
+    self:SetNextSecondaryFire(curTime + 0.55)
     self.LastSpinSlash = curTime
 
     owner:SetAnimation(PLAYER_ATTACK2)
@@ -286,6 +309,45 @@ function SWEP:OnRemove()
             if self.OriginalRunSpeed then
                 owner:SetRunSpeed(self.OriginalRunSpeed)
             end
+            if self.OriginalViewOffset then
+                owner:SetViewOffset(self.OriginalViewOffset)
+            end
         end
     end
+end
+
+-- Fortnite-like third-person camera and movement feel
+function SWEP:CalcView(ply, pos, ang, fov)
+    if not IsValid(ply) then return end
+
+    local tr = util.TraceHull({
+        start = pos,
+        endpos = pos - ang:Forward() * 80,
+        filter = ply,
+        mins = Vector(-8, -8, -8),
+        maxs = Vector(8, 8, 8),
+        mask = MASK_SOLID
+    })
+
+    local forward = ang:Forward()
+    local newPos = pos - forward * 80
+    if tr.Hit then
+        newPos = tr.HitPos + tr.HitNormal * 8
+    end
+
+    return {origin = newPos, angles = ang, fov = self.ThirdPersonFOV}
+end
+
+function SWEP:TranslateActivity(act)
+    if self.Owner:IsPlayer() then
+        if self.Owner:GetMoveType() == MOVETYPE_WALK then
+            if self.Owner:IsRunning() then
+                return ACT_HL2MP_RUN_FIST
+            else
+                return ACT_HL2MP_IDLE_FIST
+            end
+        end
+    end
+
+    return act
 end

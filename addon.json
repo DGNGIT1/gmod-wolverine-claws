@@ -1,0 +1,12 @@
+{
+  "title": "Ghearele lui Wolverine (Fortnite)",
+  "description": "Replica 1:1 din Fortnite Chapter 2 Sezon 4 - Arma SWEP de tip melee",
+  "author": "DGNGIT1",
+  "version": "1.0.0",
+  "type": "Weapon",
+  "ignore": [
+    "*.git*",
+    "*.md"
+  ],
+  "workshopid": "0"
+}
